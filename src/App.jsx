@@ -15,8 +15,11 @@ const photoEntrances = [
 ];
 const photoTints = ["#d8b9ef", "#efb8ce", "#c8c3f2", "#f1c2b6", "#d5b7dc", "#f0bfd9", "#c2d7e9", "#e6c4ee"];
 
-async function preparePhonePhoto(file, name = file.name || "foto") {
-  if (!/\.(heic|heif)$/i.test(name) && !/image\/hei[cf]/i.test(file.type)) return file;
+async function preparePhonePhoto(file, name = file.name || "foto", force = false) {
+  const header = new Uint8Array(await file.slice(0, 16).arrayBuffer());
+  const brand = String.fromCharCode(...header.slice(4, 12));
+  const heifData = /ftyp(?:heic|heix|hevc|hevx|mif1|msf1)/i.test(brand);
+  if (!force && !heifData && !/\.(heic|heif)$/i.test(name) && !/image\/hei[cf]/i.test(file.type)) return file;
   const { default: heic2any } = await import("heic2any");
   const converted = await heic2any({ blob: file, toType: "image/jpeg", quality: .9 });
   const blob = Array.isArray(converted) ? converted[0] : converted;
@@ -78,6 +81,17 @@ function Hero({ onPhoto }) {
 
 function PhotoCard({ photo, index, onPhoto }) {
   const [imageFailed, setImageFailed] = useState(false);
+  const [imageSrc, setImageSrc] = useState(photo.src);
+  useEffect(() => { setImageSrc(photo.src); setImageFailed(false); }, [photo.src]);
+  const recoverImage = async () => {
+    if (photo.blob) {
+      try {
+        const recovered = await preparePhonePhoto(photo.blob, photo.name, true);
+        if (recovered !== photo.blob) { setImageSrc(URL.createObjectURL(recovered)); return; }
+      } catch { /* Keep the album layout intact and show its fallback. */ }
+    }
+    setImageFailed(true);
+  };
   const reduce = useReducedMotion();
   const tone = (index * 3 + Math.floor(index / photoTints.length)) % photoTints.length;
   const entrance = photoEntrances[index % photoEntrances.length];
@@ -88,7 +102,7 @@ function PhotoCard({ photo, index, onPhoto }) {
   if (typeof hidden.rotate === "number") hidden.rotate += variation * .35;
   const variants = reduce ? { hidden: { opacity: 1 }, visible: { opacity: 1 } } : { hidden, visible: entrance.visible };
   return <motion.button className={`memory-photo photo-trigger ${photo.layout}`} data-tone={tone} style={{ "--photo-tint": photoTints[tone], "--shine-delay": `${tone * 90}ms` }} type="button" onClick={() => onPhoto(photo)} aria-label={`Ampliar fotografía: ${photo.text}`} initial={reduce ? false : "hidden"} whileInView="visible" viewport={{ amount: .12 }} variants={variants} transition={{ duration: reduce ? 0 : .62 + (tone % 3) * .08, delay: reduce ? 0 : (tone % 4) * .055, ease: [.2, .7, .2, 1] }} whileHover={reduce ? undefined : { y: -6, scale: 1.012, boxShadow: `0 22px 48px ${photoTints[tone]}66` }} whileTap={reduce ? undefined : { scale: .985 }}>
-    <span className="memory-photo__visual">{imageFailed ? <span className="memory-photo__fallback" role="img" aria-label="No se pudo mostrar esta foto"><span aria-hidden="true">♡</span><small>Imagen no disponible</small></span> : <img src={photo.src} alt={photo.alt} loading="lazy" decoding="async" onError={() => setImageFailed(true)} />}<motion.span className="memory-photo__shine" aria-hidden="true" initial={{ opacity: 0 }} whileInView={{ opacity: reduce ? 0 : [0, .48, .1] }} viewport={{ amount: .2 }} transition={{ duration: reduce ? 0 : 1.25, delay: reduce ? 0 : (tone % 5) * .09 }} /></span><span>{photo.title}</span><small>{photo.text}</small>
+    <span className="memory-photo__visual">{imageFailed ? <span className="memory-photo__fallback" role="img" aria-label="No se pudo mostrar esta foto"><span aria-hidden="true">♡</span><small>Imagen no disponible</small></span> : <img src={imageSrc} alt={photo.alt} loading="lazy" decoding="async" onError={recoverImage} />}<motion.span className="memory-photo__shine" aria-hidden="true" initial={{ opacity: 0 }} whileInView={{ opacity: reduce ? 0 : [0, .48, .1] }} viewport={{ amount: .2 }} transition={{ duration: reduce ? 0 : 1.25, delay: reduce ? 0 : (tone % 5) * .09 }} /></span><span>{photo.title}</span><small>{photo.text}</small>
   </motion.button>;
 }
 
@@ -262,14 +276,14 @@ function App() {
             await new Promise((resolve) => { tx.oncomplete = resolve; tx.onerror = resolve; tx.onabort = resolve; });
           }
           db.close();
-          if (!disposed) setUploaded(photos.sort((a, b) => a.createdAt - b.createdAt).map((item) => ({ src: URL.createObjectURL(item.blob), alt: "Foto añadida al álbum", title: "UN MOMENTO MÁS PARA GUARDAR", text: item.day ? `Un recuerdo del ${new Intl.DateTimeFormat("es", { dateStyle: "long" }).format(new Date(`${item.day}T12:00:00`))}` : item.name, layout: "" })));
+          if (!disposed) setUploaded(photos.sort((a, b) => a.createdAt - b.createdAt).map((item) => ({ src: URL.createObjectURL(item.blob), blob: item.blob, name: item.name, alt: "Foto añadida al álbum", title: "UN MOMENTO MÁS PARA GUARDAR", text: item.day ? `Un recuerdo del ${new Intl.DateTimeFormat("es", { dateStyle: "long" }).format(new Date(`${item.day}T12:00:00`))}` : item.name, layout: "" })));
         };
       } catch { /* IndexedDB is optional; the gallery remains usable without it. */ }
     };
     read();
     return () => { disposed = true; };
   }, []);
-  return <><Header /><ScrollExperience /><main><Hero onPhoto={openPhoto} />{chapters.map((chapter) => <PhotoChapter key={chapter.id} chapter={chapter} onPhoto={openPhoto}>{chapter.id === "ella" && <>{uploaded.map((photo, index) => <PhotoCard key={`uploaded-${index}`} photo={photo} index={index + 22} onPhoto={openPhoto} />)}<PhotoUpload onSaved={(items) => setUploaded((current) => [...current, ...items.map((item) => ({ src: URL.createObjectURL(item.blob), alt: "Foto añadida al álbum", title: "UN MOMENTO MÁS PARA GUARDAR", text: item.day ? `Un recuerdo del ${new Intl.DateTimeFormat("es", { dateStyle: "long" }).format(new Date(`${item.day}T12:00:00`))}` : item.name, layout: "" }))])} /></>}</PhotoChapter>)}<VideoSection /><Letter /><Ending /></main><footer className="site-footer"><a className="wordmark wordmark--footer" href="#inicio"><span className="wordmark__mark" aria-hidden="true">l.</span><span>para ti</span></a><p>Con todo mi amor, Raúl Castillo <span aria-hidden="true">♡</span></p><a href="#inicio">Volver arriba ↑</a></footer><Lightbox photo={activePhoto} onClose={() => setActivePhoto(null)} onChange={movePhoto} /></>;
+  return <><Header /><ScrollExperience /><main><Hero onPhoto={openPhoto} />{chapters.map((chapter) => <PhotoChapter key={chapter.id} chapter={chapter} onPhoto={openPhoto}>{chapter.id === "ella" && <>{uploaded.map((photo, index) => <PhotoCard key={`uploaded-${index}`} photo={photo} index={index + 22} onPhoto={openPhoto} />)}<PhotoUpload onSaved={(items) => setUploaded((current) => [...current, ...items.map((item) => ({ src: URL.createObjectURL(item.blob), blob: item.blob, name: item.name, alt: "Foto añadida al álbum", title: "UN MOMENTO MÁS PARA GUARDAR", text: item.day ? `Un recuerdo del ${new Intl.DateTimeFormat("es", { dateStyle: "long" }).format(new Date(`${item.day}T12:00:00`))}` : item.name, layout: "" }))])} /></>}</PhotoChapter>)}<VideoSection /><Letter /><Ending /></main><footer className="site-footer"><a className="wordmark wordmark--footer" href="#inicio"><span className="wordmark__mark" aria-hidden="true">l.</span><span>para ti</span></a><p>Con todo mi amor, Raúl Castillo <span aria-hidden="true">♡</span></p><a href="#inicio">Volver arriba ↑</a></footer><Lightbox photo={activePhoto} onClose={() => setActivePhoto(null)} onChange={movePhoto} /></>;
 }
 
 export default App;
