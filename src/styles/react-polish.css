@@ -335,3 +335,40 @@ img, video { max-inline-size: 100%; }
   .memory-photo { padding: 5px; }
   .photo-upload { margin-top: 27px; }
 }
+
+.letter-modal { display: none; }
+@media (max-width: 620px) {
+  .letter-modal {
+    position: fixed; inset: 0; z-index: 1000;
+    display: grid; place-items: center;
+    padding: max(18px, env(safe-area-inset-top)) 16px max(18px, env(safe-area-inset-bottom));
+    background: rgba(54, 43, 60, .42);
+    -webkit-backdrop-filter: blur(10px);
+    backdrop-filter: blur(10px);
+  }
+  .letter-modal__paper {
+    width: min(100%, 520px); max-height: 100%; overflow-y: auto;
+    position: relative; padding: clamp(27px, 8vw, 40px) clamp(22px, 7vw, 34px);
+    border: 1px solid rgba(255,255,255,.86); border-radius: 20px;
+    background: linear-gradient(150deg, #fffdfd 0%, #fbf4f7 58%, #f3edf8 100%);
+    box-shadow: 0 24px 80px rgba(50,35,58,.24);
+    overscroll-behavior: contain;
+  }
+  .letter-modal__close {
+    width: 42px; height: 42px; position: absolute; top: 13px; right: 13px;
+    display: grid; place-items: center; border: 1px solid rgba(102,78,110,.18);
+    border-radius: 50%; background: rgba(255,255,255,.8); color: #64556b;
+    font-size: 26px; line-height: 1; cursor: pointer;
+  }
+  .letter-modal__eyebrow { margin: 0 48px 28px 0; color: #a184a0; font-size: 9px; font-weight: 600; letter-spacing: .14em; }
+  .letter-modal__eyebrow span { margin-left: 5px; color: #c187a3; font-size: 14px; }
+  .letter-modal__to { margin: 0 0 14px; color: #886e89; font: italic clamp(17px, 4.8vw, 20px)/1.5 var(--font-display); }
+  .letter-modal__message { margin: 0; color: #786d7d; font: italic clamp(15px, 4.1vw, 17px)/1.9 var(--font-display); overflow-wrap: anywhere; }
+  .letter-modal__signature { margin: 25px 0 0; padding-top: 18px; border-top: 1px solid rgba(154,124,155,.2); color: #886e89; text-align: right; font: italic 15px/1.75 var(--font-display); }
+  .letter-modal__signature span { color: #bd87a3; }
+}
+@media (max-width: 360px) {
+  .letter-modal { padding-inline: 12px; }
+  .letter-modal__paper { padding-inline: 20px; }
+  .letter-modal__message { line-height: 1.78; }
+}
