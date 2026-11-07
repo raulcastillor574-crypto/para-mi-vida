@@ -15,6 +15,14 @@ const photoEntrances = [
 ];
 const photoTints = ["#d8b9ef", "#efb8ce", "#c8c3f2", "#f1c2b6", "#d5b7dc", "#f0bfd9", "#c2d7e9", "#e6c4ee"];
 
+async function preparePhonePhoto(file, name = file.name || "foto") {
+  if (!/\.(heic|heif)$/i.test(name) && !/image\/hei[cf]/i.test(file.type)) return file;
+  const { default: heic2any } = await import("heic2any");
+  const converted = await heic2any({ blob: file, toType: "image/jpeg", quality: .9 });
+  const blob = Array.isArray(converted) ? converted[0] : converted;
+  return new File([blob], name.replace(/\.(heic|heif)$/i, ".jpg"), { type: "image/jpeg", lastModified: file.lastModified || Date.now() });
+}
+
 function useBirthdayCountdown() {
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
@@ -69,6 +77,7 @@ function Hero({ onPhoto }) {
 }
 
 function PhotoCard({ photo, index, onPhoto }) {
+  const [imageFailed, setImageFailed] = useState(false);
   const reduce = useReducedMotion();
   const tone = (index * 3 + Math.floor(index / photoTints.length)) % photoTints.length;
   const entrance = photoEntrances[index % photoEntrances.length];
@@ -79,7 +88,7 @@ function PhotoCard({ photo, index, onPhoto }) {
   if (typeof hidden.rotate === "number") hidden.rotate += variation * .35;
   const variants = reduce ? { hidden: { opacity: 1 }, visible: { opacity: 1 } } : { hidden, visible: entrance.visible };
   return <motion.button className={`memory-photo photo-trigger ${photo.layout}`} data-tone={tone} style={{ "--photo-tint": photoTints[tone], "--shine-delay": `${tone * 90}ms` }} type="button" onClick={() => onPhoto(photo)} aria-label={`Ampliar fotografía: ${photo.text}`} initial={reduce ? false : "hidden"} whileInView="visible" viewport={{ amount: .12 }} variants={variants} transition={{ duration: reduce ? 0 : .62 + (tone % 3) * .08, delay: reduce ? 0 : (tone % 4) * .055, ease: [.2, .7, .2, 1] }} whileHover={reduce ? undefined : { y: -6, scale: 1.012, boxShadow: `0 22px 48px ${photoTints[tone]}66` }} whileTap={reduce ? undefined : { scale: .985 }}>
-    <span className="memory-photo__visual"><img src={photo.src} alt={photo.alt} loading="lazy" decoding="async" /><motion.span className="memory-photo__shine" aria-hidden="true" initial={{ opacity: 0 }} whileInView={{ opacity: reduce ? 0 : [0, .48, .1] }} viewport={{ amount: .2 }} transition={{ duration: reduce ? 0 : 1.25, delay: reduce ? 0 : (tone % 5) * .09 }} /></span><span>{photo.title}</span><small>{photo.text}</small>
+    <span className="memory-photo__visual">{imageFailed ? <span className="memory-photo__fallback" role="img" aria-label="No se pudo mostrar esta foto"><span aria-hidden="true">♡</span><small>Imagen no disponible</small></span> : <img src={photo.src} alt={photo.alt} loading="lazy" decoding="async" onError={() => setImageFailed(true)} />}<motion.span className="memory-photo__shine" aria-hidden="true" initial={{ opacity: 0 }} whileInView={{ opacity: reduce ? 0 : [0, .48, .1] }} viewport={{ amount: .2 }} transition={{ duration: reduce ? 0 : 1.25, delay: reduce ? 0 : (tone % 5) * .09 }} /></span><span>{photo.title}</span><small>{photo.text}</small>
   </motion.button>;
 }
 
@@ -104,12 +113,20 @@ function PhotoUpload({ onSaved }) {
   const inputRef = useRef(null);
   const save = async (fileList) => {
     const selected = Array.from(fileList || []);
-    const files = selected.filter((file) => file.type.startsWith("image/") && file.size <= 40 * 1024 * 1024);
+    const imageFile = (file) => file.type.startsWith("image/") || /\.(jpe?g|png|webp|gif|bmp|avif|heic|heif)$/i.test(file.name);
+    const files = selected.filter((file) => imageFile(file) && file.size <= 40 * 1024 * 1024);
     const skipped = selected.length - files.length;
     if (!files.length) { setStatus("Elige imágenes de hasta 40 MB para agregarlas al álbum."); return; }
-    const added = files.map((file) => ({ name: file.name, blob: file, day, createdAt: Date.now() }));
+    setStatus("Preparando tus fotos para que se vean bien en el álbum…");
+    const prepared = await Promise.all(files.map(async (file) => {
+      try { return await preparePhonePhoto(file); } catch { return null; }
+    }));
+    const compatible = prepared.filter(Boolean);
+    const unsupported = prepared.length - compatible.length;
+    if (!compatible.length) { setStatus("No se pudieron convertir esas fotos. Prueba compartirlas como JPG desde tu teléfono."); return; }
+    const added = compatible.map((file) => ({ name: file.name, blob: file, day, createdAt: Date.now() }));
     onSaved(added.map((photo) => ({ ...photo, src: URL.createObjectURL(photo.blob) })));
-    setStatus(`${files.length} ${files.length === 1 ? "foto agregada" : "fotos agregadas"} al álbum${skipped ? ` · ${skipped} archivo(s) omitido(s)` : ""}. Guardando en este dispositivo…`);
+    setStatus(`${compatible.length} ${compatible.length === 1 ? "foto agregada" : "fotos agregadas"} al álbum${skipped + unsupported ? ` · ${skipped + unsupported} archivo(s) omitido(s)` : ""}. Guardando en este dispositivo…`);
     try {
       const db = await new Promise((resolve, reject) => {
         const request = indexedDB.open("para-ti-photo-album", 1);
@@ -122,14 +139,14 @@ function PhotoUpload({ onSaved }) {
       added.forEach((photo) => store.add(photo));
       await new Promise((resolve, reject) => { tx.oncomplete = resolve; tx.onerror = () => reject(tx.error); tx.onabort = () => reject(tx.error); });
       db.close();
-      setStatus(`${files.length} ${files.length === 1 ? "foto agregada" : "fotos agregadas"}${skipped ? ` · ${skipped} archivo(s) omitido(s)` : ""}. Se conservarán en este dispositivo.`);
+      setStatus(`${compatible.length} ${compatible.length === 1 ? "foto agregada" : "fotos agregadas"}${skipped + unsupported ? ` · ${skipped + unsupported} archivo(s) omitido(s)` : ""}. Se conservarán en este dispositivo.`);
     } catch { setStatus("Las fotos ya están en el álbum abierto, pero el navegador no pudo conservarlas para la próxima visita."); }
   };
   const onFiles = (files) => { const selected = Array.from(files || []); if (selected.length) void save(selected); if (inputRef.current) inputRef.current.value = ""; };
   const reduce = useReducedMotion();
   return <motion.div className="photo-upload" id="agregar-fotos" initial={reduce ? false : "hidden"} whileInView="visible" viewport={{ amount: .2 }} variants={reduce ? { visible: { opacity: 1, y: 0 } } : reveal} transition={{ duration: reduce ? 0 : .55 }}>
     <div className="photo-upload__copy"><p className="eyebrow"><span className="eyebrow__line" /> MÁS MOMENTOS PARA GUARDAR</p><h3>¿Sumamos más fotos?</h3><p>Elige imágenes o arrástralas aquí. Aparecerán al final de este álbum, guardadas en este dispositivo.</p><label className="photo-upload__day-label" htmlFor="photo-upload-day">Fecha del recuerdo <span>(opcional)</span></label><input id="photo-upload-day" className="photo-upload__day" type="date" value={day} onChange={(event) => setDay(event.target.value)} /></div>
-    <label className="photo-upload__drop" htmlFor="photo-upload-input" onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); onFiles(event.dataTransfer.files); }}><span className="photo-upload__symbol" aria-hidden="true">＋</span><span>Arrastra tus fotos aquí</span><span className="photo-upload__button">Elegir fotos</span><input ref={inputRef} id="photo-upload-input" className="photo-upload__input" type="file" accept="image/*" multiple aria-label="Elegir fotografías para agregar al álbum" onChange={(event) => onFiles(event.currentTarget.files)} /></label><p className="photo-upload__status" aria-live="polite">{status}</p>
+    <label className="photo-upload__drop" htmlFor="photo-upload-input" onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); onFiles(event.dataTransfer.files); }}><span className="photo-upload__symbol" aria-hidden="true">＋</span><span>Arrastra tus fotos aquí</span><span className="photo-upload__button">Elegir fotos</span><input ref={inputRef} id="photo-upload-input" className="photo-upload__input" type="file" accept="image/*,.heic,.heif" multiple aria-label="Elegir fotografías para agregar al álbum" onChange={(event) => onFiles(event.currentTarget.files)} /></label><p className="photo-upload__status" aria-live="polite">{status}</p>
   </motion.div>;
 }
 
@@ -231,7 +248,22 @@ function App() {
       try {
         const db = await new Promise((resolve, reject) => { const request = indexedDB.open("para-ti-photo-album", 1); request.onupgradeneeded = () => request.result.createObjectStore("photos", { keyPath: "id", autoIncrement: true }); request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error); });
         const request = db.transaction("photos", "readonly").objectStore("photos").getAll();
-        request.onsuccess = () => { if (!disposed) setUploaded(request.result.sort((a, b) => a.createdAt - b.createdAt).map((item) => ({ src: URL.createObjectURL(item.blob), alt: "Foto añadida al álbum", title: "UN MOMENTO MÁS PARA GUARDAR", text: item.day ? `Un recuerdo del ${new Intl.DateTimeFormat("es", { dateStyle: "long" }).format(new Date(`${item.day}T12:00:00`))}` : item.name, layout: "" }))); };
+        request.onsuccess = async () => {
+          const photos = await Promise.all(request.result.map(async (item) => {
+            try {
+              const blob = await preparePhonePhoto(item.blob, item.name);
+              return blob === item.blob ? item : { ...item, blob, name: blob.name || item.name.replace(/\.(heic|heif)$/i, ".jpg") };
+            } catch { return item; }
+          }));
+          const converted = photos.filter((photo, index) => photo.blob !== request.result[index].blob);
+          if (converted.length) {
+            const tx = db.transaction("photos", "readwrite");
+            converted.forEach((photo) => tx.objectStore("photos").put(photo));
+            await new Promise((resolve) => { tx.oncomplete = resolve; tx.onerror = resolve; tx.onabort = resolve; });
+          }
+          db.close();
+          if (!disposed) setUploaded(photos.sort((a, b) => a.createdAt - b.createdAt).map((item) => ({ src: URL.createObjectURL(item.blob), alt: "Foto añadida al álbum", title: "UN MOMENTO MÁS PARA GUARDAR", text: item.day ? `Un recuerdo del ${new Intl.DateTimeFormat("es", { dateStyle: "long" }).format(new Date(`${item.day}T12:00:00`))}` : item.name, layout: "" })));
+        };
       } catch { /* IndexedDB is optional; the gallery remains usable without it. */ }
     };
     read();

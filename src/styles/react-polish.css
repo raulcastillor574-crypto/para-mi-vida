@@ -47,6 +47,14 @@
   z-index: 0;
   transition: transform .75s var(--ease-out), filter .5s ease;
 }
+.memory-photo__visual > .memory-photo__fallback {
+  min-height: 190px; display: flex !important; align-items: center; justify-content: center;
+  flex-direction: column; gap: 8px; padding: 22px !important;
+  color: #9b7f9c; text-align: center;
+  background: linear-gradient(145deg, #f3eaf5, #f9eaf0);
+}
+.memory-photo__fallback > span { font: 30px var(--font-display); }
+.memory-photo__fallback > small { color: #897b8d; font: 11px/1.5 var(--font-body); }
 .memory-photo__shine {
   position: absolute;
   z-index: 1;
