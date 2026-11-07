@@ -203,7 +203,9 @@ img, video { max-inline-size: 100%; }
 .hero__description, .section-copy, .memory-photo small, .ending__note {
   overflow-wrap: anywhere;
 }
-.letter-paper p { overflow-wrap: anywhere; }
+.letter-paper p { overflow-wrap: anywhere; font-size: 11px; line-height: 1.48; }
+.letter-paper { overflow: hidden; }
+.letter-paper p { min-width: 0; }
 .lightbox__caption { max-width: 100%; overflow-wrap: anywhere; }
 @media (min-width: 1440px) {
   .hero { padding-inline: max(9vw, calc((100vw - 1320px) / 2)); }
