@@ -1,0 +1,18 @@
+:root {
+  color-scheme: light;
+  --color-ink: #453b4c;
+  --color-ink-soft: #81778a;
+  --color-paper: #fbf8fc;
+  --color-white: #fffdfd;
+  --color-lavender: #ddd4eb;
+  --color-lilac: #bca8d4;
+  --color-rose: #e8bfcc;
+  --color-pink: #d894aa;
+  --color-line: rgba(87, 69, 95, 0.16);
+  --font-display: "Playfair Display", Georgia, serif;
+  --font-body: "DM Sans", sans-serif;
+  --layout-width: 1200px;
+  --space-section: clamp(6rem, 12vw, 10.5rem);
+  --radius-pill: 999px;
+  --ease-out: cubic-bezier(0.2, 0.7, 0.2, 1);
+}
