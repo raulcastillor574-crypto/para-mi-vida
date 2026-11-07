@@ -18,12 +18,29 @@ const photoTints = ["#d8b9ef", "#efb8ce", "#c8c3f2", "#f1c2b6", "#d5b7dc", "#f0b
 async function preparePhonePhoto(file, name = file.name || "foto", force = false) {
   const header = new Uint8Array(await file.slice(0, 16).arrayBuffer());
   const brand = String.fromCharCode(...header.slice(4, 12));
-  const heifData = /ftyp(?:heic|heix|hevc|hevx|mif1|msf1)/i.test(brand);
-  if (!force && !heifData && !/\.(heic|heif)$/i.test(name) && !/image\/hei[cf]/i.test(file.type)) return file;
-  const { default: heic2any } = await import("heic2any");
-  const converted = await heic2any({ blob: file, toType: "image/jpeg", quality: .9 });
-  const blob = Array.isArray(converted) ? converted[0] : converted;
-  return new File([blob], name.replace(/\.(heic|heif)$/i, ".jpg"), { type: "image/jpeg", lastModified: file.lastModified || Date.now() });
+  const heifData = /ftyp(?:heic|heix|heif|heis|hevc|hevs|hevm|hevx|mif1|msf1)/i.test(brand);
+  const heif = heifData || /\.(heic|heif)$/i.test(name) || /image\/hei[cf]/i.test(file.type);
+  const raw = /\.(dng|raw)$/i.test(name);
+  const tiff = /\.(tif|tiff)$/i.test(name) || /image\/tiff/i.test(file.type);
+  if (!force && !heif && !raw && !tiff) return file;
+  if (heif || force) {
+    try {
+      const { default: heic2any } = await import("heic2any");
+      const converted = await heic2any({ blob: file, toType: "image/jpeg", quality: .9 });
+      const blob = Array.isArray(converted) ? converted[0] : converted;
+      return new File([blob], name.replace(/\.(heic|heif)$/i, ".jpg"), { type: "image/jpeg", lastModified: file.lastModified || Date.now() });
+    } catch { /* Try the embedded preview below for RAW/TIFF or unusual phone files. */ }
+  }
+  if (raw || tiff || force) {
+    try {
+      const { default: exifr } = await import("exifr");
+      const thumbnail = await exifr.thumbnail(file);
+      if (thumbnail?.length) return new File([thumbnail], name.replace(/\.(dng|raw|tif|tiff)$/i, ".jpg"), { type: "image/jpeg", lastModified: file.lastModified || Date.now() });
+    } catch { /* Some RAW files do not include an extractable preview. */ }
+  }
+  if (force) return file;
+  if (raw || tiff || heif) throw new Error("Formato de foto no compatible");
+  return file;
 }
 
 function useBirthdayCountdown() {
@@ -127,10 +144,10 @@ function PhotoUpload({ onSaved }) {
   const inputRef = useRef(null);
   const save = async (fileList) => {
     const selected = Array.from(fileList || []);
-    const imageFile = (file) => file.type.startsWith("image/") || /\.(jpe?g|png|webp|gif|bmp|avif|heic|heif)$/i.test(file.name);
-    const files = selected.filter((file) => imageFile(file) && file.size <= 40 * 1024 * 1024);
+    const imageFile = (file) => file.type.startsWith("image/") || /\.(jpe?g|png|webp|gif|bmp|wbmp|avif|heic|heif|tif|tiff|dng|raw)$/i.test(file.name);
+    const files = selected.filter((file) => imageFile(file) && file.size <= (/\.(dng|raw)$/i.test(file.name) ? 100 : 40) * 1024 * 1024);
     const skipped = selected.length - files.length;
-    if (!files.length) { setStatus("Elige imágenes de hasta 40 MB para agregarlas al álbum."); return; }
+    if (!files.length) { setStatus("Elige una imagen compatible de hasta 40 MB (RAW/DNG hasta 100 MB)."); return; }
     setStatus("Preparando tus fotos para que se vean bien en el álbum…");
     const prepared = await Promise.all(files.map(async (file) => {
       try { return await preparePhonePhoto(file); } catch { return null; }
@@ -160,7 +177,7 @@ function PhotoUpload({ onSaved }) {
   const reduce = useReducedMotion();
   return <motion.div className="photo-upload" id="agregar-fotos" initial={reduce ? false : "hidden"} whileInView="visible" viewport={{ amount: .2 }} variants={reduce ? { visible: { opacity: 1, y: 0 } } : reveal} transition={{ duration: reduce ? 0 : .55 }}>
     <div className="photo-upload__copy"><p className="eyebrow"><span className="eyebrow__line" /> MÁS MOMENTOS PARA GUARDAR</p><h3>¿Sumamos más fotos?</h3><p>Elige imágenes o arrástralas aquí. Aparecerán al final de este álbum, guardadas en este dispositivo.</p><label className="photo-upload__day-label" htmlFor="photo-upload-day">Fecha del recuerdo <span>(opcional)</span></label><input id="photo-upload-day" className="photo-upload__day" type="date" value={day} onChange={(event) => setDay(event.target.value)} /></div>
-    <label className="photo-upload__drop" htmlFor="photo-upload-input" onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); onFiles(event.dataTransfer.files); }}><span className="photo-upload__symbol" aria-hidden="true">＋</span><span>Arrastra tus fotos aquí</span><span className="photo-upload__button">Elegir fotos</span><input ref={inputRef} id="photo-upload-input" className="photo-upload__input" type="file" accept="image/*,.heic,.heif" multiple aria-label="Elegir fotografías para agregar al álbum" onChange={(event) => onFiles(event.currentTarget.files)} /></label><p className="photo-upload__status" aria-live="polite">{status}</p>
+    <label className="photo-upload__drop" htmlFor="photo-upload-input" onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); onFiles(event.dataTransfer.files); }}><span className="photo-upload__symbol" aria-hidden="true">＋</span><span>Arrastra tus fotos aquí</span><span className="photo-upload__button">Elegir fotos</span><input ref={inputRef} id="photo-upload-input" className="photo-upload__input" type="file" accept="image/*,.heic,.heif,.tif,.tiff,.dng,.raw" multiple aria-label="Elegir fotografías para agregar al álbum" onChange={(event) => onFiles(event.currentTarget.files)} /></label><p className="photo-upload__status" aria-live="polite">{status}</p>
   </motion.div>;
 }
 
