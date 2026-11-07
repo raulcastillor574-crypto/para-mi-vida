@@ -103,9 +103,13 @@ function PhotoUpload({ onSaved }) {
   const [status, setStatus] = useState("Las fotos se guardan en este dispositivo.");
   const inputRef = useRef(null);
   const save = async (fileList) => {
-    const files = [...fileList].filter((file) => file.type.startsWith("image/") && file.size <= 20 * 1024 * 1024);
-    const skipped = fileList.length - files.length;
-    if (!files.length) { setStatus("Elige imágenes de hasta 20 MB para agregarlas al álbum."); return; }
+    const selected = Array.from(fileList || []);
+    const files = selected.filter((file) => file.type.startsWith("image/") && file.size <= 40 * 1024 * 1024);
+    const skipped = selected.length - files.length;
+    if (!files.length) { setStatus("Elige imágenes de hasta 40 MB para agregarlas al álbum."); return; }
+    const added = files.map((file) => ({ name: file.name, blob: file, day, createdAt: Date.now() }));
+    onSaved(added.map((photo) => ({ ...photo, src: URL.createObjectURL(photo.blob) })));
+    setStatus(`${files.length} ${files.length === 1 ? "foto agregada" : "fotos agregadas"} al álbum${skipped ? ` · ${skipped} archivo(s) omitido(s)` : ""}. Guardando en este dispositivo…`);
     try {
       const db = await new Promise((resolve, reject) => {
         const request = indexedDB.open("para-ti-photo-album", 1);
@@ -115,18 +119,17 @@ function PhotoUpload({ onSaved }) {
       });
       const tx = db.transaction("photos", "readwrite");
       const store = tx.objectStore("photos");
-      const saved = files.map((file) => ({ name: file.name, blob: file, day, createdAt: Date.now() }));
-      const ids = saved.map((photo) => store.add(photo));
+      added.forEach((photo) => store.add(photo));
       await new Promise((resolve, reject) => { tx.oncomplete = resolve; tx.onerror = () => reject(tx.error); tx.onabort = () => reject(tx.error); });
-      onSaved(saved.map((photo, i) => ({ ...photo, id: ids[i].result })));
-      setStatus(`${files.length} ${files.length === 1 ? "foto agregada" : "fotos agregadas"}${skipped ? ` · ${skipped} archivo(s) omitido(s)` : ""}.`);
-    } catch { setStatus("No se pudieron guardar las fotos en este navegador."); }
+      db.close();
+      setStatus(`${files.length} ${files.length === 1 ? "foto agregada" : "fotos agregadas"}${skipped ? ` · ${skipped} archivo(s) omitido(s)` : ""}. Se conservarán en este dispositivo.`);
+    } catch { setStatus("Las fotos ya están en el álbum abierto, pero el navegador no pudo conservarlas para la próxima visita."); }
   };
-  const onFiles = (files) => { if (files?.length) save(files); if (inputRef.current) inputRef.current.value = ""; };
+  const onFiles = (files) => { const selected = Array.from(files || []); if (selected.length) void save(selected); if (inputRef.current) inputRef.current.value = ""; };
   const reduce = useReducedMotion();
   return <motion.div className="photo-upload" id="agregar-fotos" initial={reduce ? false : "hidden"} whileInView="visible" viewport={{ amount: .2 }} variants={reduce ? { visible: { opacity: 1, y: 0 } } : reveal} transition={{ duration: reduce ? 0 : .55 }}>
     <div className="photo-upload__copy"><p className="eyebrow"><span className="eyebrow__line" /> MÁS MOMENTOS PARA GUARDAR</p><h3>¿Sumamos más fotos?</h3><p>Elige imágenes o arrástralas aquí. Aparecerán al final de este álbum, guardadas en este dispositivo.</p><label className="photo-upload__day-label" htmlFor="photo-upload-day">Fecha del recuerdo <span>(opcional)</span></label><input id="photo-upload-day" className="photo-upload__day" type="date" value={day} onChange={(event) => setDay(event.target.value)} /></div>
-    <label className="photo-upload__drop" htmlFor="photo-upload-input" onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); onFiles(event.dataTransfer.files); }}><span className="photo-upload__symbol" aria-hidden="true">＋</span><span>Arrastra tus fotos aquí</span><span className="photo-upload__button">Elegir fotos</span><input ref={inputRef} id="photo-upload-input" className="photo-upload__input" type="file" accept="image/*" multiple aria-label="Elegir fotografías para agregar al álbum" onChange={(event) => onFiles(event.target.files)} /></label><p className="photo-upload__status" aria-live="polite">{status}</p>
+    <label className="photo-upload__drop" htmlFor="photo-upload-input" onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); onFiles(event.dataTransfer.files); }}><span className="photo-upload__symbol" aria-hidden="true">＋</span><span>Arrastra tus fotos aquí</span><span className="photo-upload__button">Elegir fotos</span><input ref={inputRef} id="photo-upload-input" className="photo-upload__input" type="file" accept="image/*" multiple aria-label="Elegir fotografías para agregar al álbum" onChange={(event) => onFiles(event.currentTarget.files)} /></label><p className="photo-upload__status" aria-live="polite">{status}</p>
   </motion.div>;
 }
 
