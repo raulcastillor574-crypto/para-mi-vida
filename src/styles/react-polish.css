@@ -280,3 +280,29 @@ img, video { max-inline-size: 100%; }
 @media (max-width: 620px) {
   .lightbox__hint { display: none; }
 }
+@media (max-width: 620px) {
+  .letter-wrap { width: 100%; padding: 4px 0 0; }
+  .envelope { aspect-ratio: 1.12; }
+  .letter-paper {
+    top: 4%;
+    height: 94%;
+    box-sizing: border-box;
+    padding: 5% 7%;
+  }
+  .letter-paper__to { flex: 0 0 auto; font-size: clamp(11px, 3.2vw, 13px); }
+  .letter-paper p {
+    flex: 1 1 auto;
+    min-height: 0;
+    margin: 5px 0;
+    font-size: clamp(9px, 2.5vw, 10px);
+    line-height: 1.28;
+  }
+  .letter-paper__from { flex: 0 0 auto; font-size: clamp(9.5px, 2.6vw, 10.5px); line-height: 1.28; }
+}
+@media (max-width: 350px) {
+  .envelope { aspect-ratio: 1.02; }
+  .letter-paper { top: 3%; height: 96%; padding: 4.5% 6%; }
+  .letter-paper p { margin-block: 4px; font-size: 8.8px; line-height: 1.24; }
+  .letter-paper__to { font-size: 10.5px; }
+  .letter-paper__from { font-size: 9px; }
+}
